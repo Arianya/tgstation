@@ -6,7 +6,6 @@
 	icon = 'icons/obj/machines/mining_machines.dmi'
 	icon_state = "mining"
 	density = TRUE
-	anchored = TRUE
 	circuit = /obj/item/circuitboard/machine/mining_equipment_vendor
 	var/icon_deny = "mining-deny"
 	var/obj/item/card/id/inserted_id
@@ -128,7 +127,7 @@
 				flick(icon_deny, src)
 				return
 			if(prize.cost > inserted_id.mining_points)
-				to_chat(usr, "<span class='warning'>Error: Insufficent points for [prize.equipment_name]!</span>")
+				to_chat(usr, "<span class='warning'>Error: Insufficient points for [prize.equipment_name]!</span>")
 				flick(icon_deny, src)
 			else
 				inserted_id.mining_points -= prize.cost
@@ -172,8 +171,6 @@
 		if("Survival Capsule and Explorer's Webbing")
 			new /obj/item/storage/belt/mining/vendor(drop_location)
 		if("Resonator Kit")
-			new /obj/item/storage/belt/mining/alt(drop_location)
-			new /obj/item/t_scanner/adv_mining_scanner(drop_location)
 			new /obj/item/extinguisher/mini(drop_location)
 			new /obj/item/resonator(drop_location)
 		if("Minebot Kit")
@@ -186,8 +183,6 @@
 			new /obj/item/fulton_core(drop_location)
 			new /obj/item/stack/marker_beacon/thirty(drop_location)
 		if("Crusher Kit")
-			new /obj/item/storage/belt/mining/alt(drop_location)
-			new /obj/item/t_scanner/adv_mining_scanner(drop_location)
 			new /obj/item/extinguisher/mini(drop_location)
 			new /obj/item/twohanded/required/kinetic_crusher(drop_location)
 		if("Mining Conscription Kit")

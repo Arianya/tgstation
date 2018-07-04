@@ -34,7 +34,6 @@ Possible to do for anyone motivated enough:
 	layer = LOW_OBJ_LAYER
 	plane = FLOOR_PLANE
 	flags_1 = HEAR_1
-	anchored = TRUE
 	use_power = IDLE_POWER_USE
 	idle_power_usage = 5
 	active_power_usage = 100
@@ -480,6 +479,8 @@ For the other part of the code, check silicon say.dm. Particularly robot talk.*/
 			continue
 		if(another.validate_location(T))
 			unset_holo(holo_owner)
+			if(another.masters && another.masters[holo_owner])
+				another.clear_holo(holo_owner)
 			another.set_holo(holo_owner, h)
 			return TRUE
 	return FALSE
@@ -667,7 +668,7 @@ For the other part of the code, check silicon say.dm. Particularly robot talk.*/
 
 /obj/effect/overlay/holo_pad_hologram/Destroy()
 	Impersonation = null
-	if(HC)
+	if(!QDELETED(HC))
 		HC.Disconnect(HC.calling_holopad)
 	return ..()
 

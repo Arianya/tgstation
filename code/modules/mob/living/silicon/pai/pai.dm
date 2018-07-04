@@ -90,6 +90,11 @@
 	return FALSE
 
 /mob/living/silicon/pai/Destroy()
+	if (loc != card)
+		card.forceMove(drop_location())
+	card.pai = null
+	card.cut_overlays()
+	card.add_overlay("pai-off")
 	GLOB.pai_list -= src
 	return ..()
 
@@ -231,7 +236,7 @@
 		P.fold_out()
 
 /datum/action/innate/pai/chassis
-	name = "Holochassis Appearence Composite"
+	name = "Holochassis Appearance Composite"
 	button_icon_state = "pai_chassis"
 	background_icon_state = "bg_tech"
 

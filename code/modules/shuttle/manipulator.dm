@@ -9,7 +9,6 @@
 	icon = 'icons/obj/machines/shuttle_manipulator.dmi'
 	icon_state = "holograph_on"
 
-	anchored = TRUE
 	density = TRUE
 
 	// UI state variables
@@ -225,7 +224,11 @@
 	if(existing_shuttle)
 		existing_shuttle.jumpToNullSpace()
 
+	var/list/force_memory = preview_shuttle.movement_force
+	preview_shuttle.movement_force = list("KNOCKDOWN" = 0, "THROW" = 0)
 	preview_shuttle.initiate_docking(D)
+	preview_shuttle.movement_force = force_memory
+	
 	. = preview_shuttle
 
 	// Shuttle state involves a mode and a timer based on world.time, so
@@ -276,7 +279,7 @@
 			if(istype(P, /obj/docking_port/stationary))
 				log_world("Map warning: Shuttle Template [S.mappath] has a stationary docking port.")
 	if(!found)
-		var/msg = "load_template(): Shuttle Template [S.mappath] has no	mobile docking port. Aborting import."
+		var/msg = "load_template(): Shuttle Template [S.mappath] has no mobile docking port. Aborting import."
 		for(var/T in affected)
 			var/turf/T0 = T
 			T0.empty()
