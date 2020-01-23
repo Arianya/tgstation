@@ -7,8 +7,10 @@
 	idle_power_usage = 4
 	active_power_usage = 250
 	circuit = /obj/item/circuitboard/machine/recharger
+	pass_flags = PASSTABLE
 	var/obj/item/charging = null
 	var/recharge_coeff = 1
+	var/using_power = FALSE //Did we put power into "charging" last process()?
 
 	var/static/list/allowed_devices = typecacheof(list(
 		/obj/item/gun/energy,
@@ -20,12 +22,42 @@
 	for(var/obj/item/stock_parts/capacitor/C in component_parts)
 		recharge_coeff = C.rating
 
+/obj/machinery/recharger/examine(mob/user)
+	. = ..()
+	if(!in_range(user, src) && !issilicon(user) && !isobserver(user))
+		. += "<span class='warning'>You're too far away to examine [src]'s contents and display!</span>"
+		return
+
+	if(charging)
+		. += {"<span class='notice'>\The [src] contains:</span>
+		<span class='notice'>- \A [charging].</span>"}
+
+	if(!(stat & (NOPOWER|BROKEN)))
+		. += "<span class='notice'>The status display reads:</span>"
+		. += "<span class='notice'>- Recharging <b>[recharge_coeff*10]%</b> cell charge per cycle.</span>"
+		if(charging)
+			var/obj/item/stock_parts/cell/C = charging.get_cell()
+			. += "<span class='notice'>- \The [charging]'s cell is at <b>[C.percent()]%</b>.</span>"
+
+
+/obj/machinery/recharger/proc/setCharging(new_charging)
+	charging = new_charging
+	if (new_charging)
+		START_PROCESSING(SSmachines, src)
+		use_power = ACTIVE_POWER_USE
+		using_power = TRUE
+		update_icon()
+	else
+		use_power = IDLE_POWER_USE
+		using_power = FALSE
+		update_icon()
+
 /obj/machinery/recharger/attackby(obj/item/G, mob/user, params)
-	if(istype(G, /obj/item/wrench))
+	if(G.tool_behaviour == TOOL_WRENCH)
 		if(charging)
 			to_chat(user, "<span class='notice'>Remove the charging item first!</span>")
 			return
-		anchored = !anchored
+		setAnchored(!anchored)
 		power_change()
 		to_chat(user, "<span class='notice'>You [anchored ? "attached" : "detached"] [src].</span>")
 		G.play_tool_sound(src)
@@ -52,9 +84,8 @@
 
 			if(!user.transferItemToLoc(G, src))
 				return 1
-			charging = G
-			use_power = ACTIVE_POWER_USE
-			update_icon(scan = TRUE)
+			setCharging(G)
+
 		else
 			to_chat(user, "<span class='notice'>[src] isn't connected to anything!</span>")
 		return 1
@@ -63,7 +94,7 @@
 		if(default_deconstruction_screwdriver(user, "rechargeropen", "recharger0", G))
 			return
 
-		if(panel_open && istype(G, /obj/item/crowbar))
+		if(panel_open && G.tool_behaviour == TOOL_CROWBAR)
 			default_deconstruction_crowbar(G)
 			return
 
@@ -79,44 +110,38 @@
 		charging.update_icon()
 		charging.forceMove(drop_location())
 		user.put_in_hands(charging)
-		charging = null
-		use_power = IDLE_POWER_USE
-		update_icon()
+		setCharging(null)
 
 /obj/machinery/recharger/attack_tk(mob/user)
 	if(charging)
 		charging.update_icon()
 		charging.forceMove(drop_location())
-		charging = null
-		use_power = IDLE_POWER_USE
-		update_icon()
+		setCharging(null)
 
 /obj/machinery/recharger/process()
 	if(stat & (NOPOWER|BROKEN) || !anchored)
-		return
+		return PROCESS_KILL
 
-	var/using_power = 0
+	using_power = FALSE
 	if(charging)
 		var/obj/item/stock_parts/cell/C = charging.get_cell()
 		if(C)
 			if(C.charge < C.maxcharge)
 				C.give(C.chargerate * recharge_coeff)
 				use_power(250 * recharge_coeff)
-				using_power = 1
-			update_icon(using_power)
+				using_power = TRUE
+			update_icon()
 
 		if(istype(charging, /obj/item/ammo_box/magazine/recharge))
 			var/obj/item/ammo_box/magazine/recharge/R = charging
 			if(R.stored_ammo.len < R.max_ammo)
 				R.stored_ammo += new R.ammo_type(R)
 				use_power(200 * recharge_coeff)
-				using_power = 1
-			update_icon(using_power)
+				using_power = TRUE
+			update_icon()
 			return
-
-/obj/machinery/recharger/power_change()
-	..()
-	update_icon()
+	else
+		return PROCESS_KILL
 
 /obj/machinery/recharger/emp_act(severity)
 	. = ..()
@@ -134,20 +159,15 @@
 				B.cell.charge = 0
 
 
-/obj/machinery/recharger/update_icon(using_power = 0, scan)	//we have an update_icon() in addition to the stuff in process to make it feel a tiny bit snappier.
+/obj/machinery/recharger/update_icon_state()
 	if(stat & (NOPOWER|BROKEN) || !anchored)
 		icon_state = "rechargeroff"
-		return
-	if(scan)
-		icon_state = "rechargeroff"
-		return
-	if(panel_open)
+	else if(panel_open)
 		icon_state = "rechargeropen"
-		return
-	if(charging)
+	else if(charging)
 		if(using_power)
 			icon_state = "recharger1"
 		else
 			icon_state = "recharger2"
-		return
-	icon_state = "recharger0"
+	else
+		icon_state = "recharger0"

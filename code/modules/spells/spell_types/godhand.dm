@@ -4,10 +4,12 @@
 	var/catchphrase = "High Five!"
 	var/on_use_sound = null
 	var/obj/effect/proc_holder/spell/targeted/touch/attached_spell
-	icon = 'icons/obj/items_and_weapons.dmi'
+	icon = 'icons/obj/balloons.dmi'
+	lefthand_file = 'icons/mob/inhands/misc/touchspell_lefthand.dmi'
+	righthand_file = 'icons/mob/inhands/misc/touchspell_righthand.dmi'
 	icon_state = "syndballoon"
 	item_state = null
-	item_flags = NEEDS_PERMIT | ABSTRACT | NODROP | DROPDEL
+	item_flags = NEEDS_PERMIT | ABSTRACT | DROPDEL
 	w_class = WEIGHT_CLASS_HUGE
 	force = 0
 	throwforce = 0
@@ -15,17 +17,24 @@
 	throw_speed = 0
 	var/charges = 1
 
+/obj/item/melee/touch_attack/Initialize()
+	. = ..()
+	ADD_TRAIT(src, TRAIT_NODROP, ABSTRACT_ITEM_TRAIT)
+
 /obj/item/melee/touch_attack/attack(mob/target, mob/living/carbon/user)
 	if(!iscarbon(user)) //Look ma, no hands
 		return
-	if(user.lying || user.handcuffed)
+	if(!(user.mobility_flags & MOBILITY_USE))
 		to_chat(user, "<span class='warning'>You can't reach out!</span>")
 		return
 	..()
 
 /obj/item/melee/touch_attack/afterattack(atom/target, mob/user, proximity)
-	user.say(catchphrase)
-	playsound(get_turf(user), on_use_sound,50,1)
+	. = ..()
+	if(!proximity)
+		return
+	user.say(catchphrase, forced = "spell")
+	playsound(get_turf(user), on_use_sound,50,TRUE)
 	charges--
 	if(charges <= 0)
 		qdel(src)
@@ -36,7 +45,7 @@
 	return ..()
 
 /obj/item/melee/touch_attack/disintegrate
-	name = "\improper disintegrating touch"
+	name = "\improper smiting touch"
 	desc = "This hand of mine glows with an awesome power!"
 	catchphrase = "EI NATH!!"
 	on_use_sound = 'sound/magic/disintegrate.ogg'
@@ -44,10 +53,10 @@
 	item_state = "disintegrate"
 
 /obj/item/melee/touch_attack/disintegrate/afterattack(atom/target, mob/living/carbon/user, proximity)
-	if(!proximity || target == user || !ismob(target) || !iscarbon(user) || user.lying || user.handcuffed) //exploding after touching yourself would be bad
+	if(!proximity || target == user || !ismob(target) || !iscarbon(user) || !(user.mobility_flags & MOBILITY_USE)) //exploding after touching yourself would be bad
 		return
 	if(!user.can_speak_vocal())
-		to_chat(user, "<span class='notice'>You can't get the words out!</span>")
+		to_chat(user, "<span class='warning'>You can't get the words out!</span>")
 		return
 	var/mob/M = target
 	do_sparks(4, FALSE, M.loc)
@@ -63,10 +72,16 @@
 		var/obj/item/bodypart/part = user.get_holding_bodypart_of_item(src)
 		if(part)
 			part.dismember()
-		..()
-		return
+		return ..()
+	var/obj/item/clothing/suit/hooded/bloated_human/suit = M.get_item_by_slot(ITEM_SLOT_OCLOTHING)
+	if(istype(suit))
+		M.visible_message("<span class='danger'>[M]'s [suit] explodes off of them into a puddle of gore!</span>")
+		M.dropItemToGround(suit)
+		qdel(suit)
+		new /obj/effect/gibspawner(M.loc)
+		return ..()
 	M.gib()
-	..()
+	return ..()
 
 /obj/item/melee/touch_attack/fleshtostone
 	name = "\improper petrifying touch"
@@ -77,13 +92,13 @@
 	item_state = "fleshtostone"
 
 /obj/item/melee/touch_attack/fleshtostone/afterattack(atom/target, mob/living/carbon/user, proximity)
-	if(!proximity || target == user || !isliving(target) || !iscarbon(user) || user.lying || user.handcuffed) //getting hard after touching yourself would also be bad
+	if(!proximity || target == user || !isliving(target) || !iscarbon(user)) //getting hard after touching yourself would also be bad
 		return
-	if(user.lying || user.handcuffed)
+	if(!(user.mobility_flags & MOBILITY_USE))
 		to_chat(user, "<span class='warning'>You can't reach out!</span>")
 		return
 	if(!user.can_speak_vocal())
-		to_chat(user, "<span class='notice'>You can't get the words out!</span>")
+		to_chat(user, "<span class='warning'>You can't get the words out!</span>")
 		return
 	var/mob/living/M = target
 	if(M.anti_magic_check())
@@ -93,4 +108,4 @@
 		return
 	M.Stun(40)
 	M.petrify()
-	..()
+	return ..()

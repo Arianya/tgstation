@@ -12,10 +12,13 @@
 	var/death = TRUE //Kill the mob
 	var/roundstart = TRUE //fires on initialize
 	var/instant = FALSE	//fires on New
-	var/flavour_text = "The mapper forgot to set this!"
+	var/short_desc = "The mapper forgot to set this!"
+	var/flavour_text = ""
+	var/important_info = ""
 	var/faction = null
 	var/permanent = FALSE	//If true, the spawner will not disappear upon running out of uses.
 	var/random = FALSE		//Don't set a name or gender, just go random
+	var/antagonist_type
 	var/objectives = null
 	var/uses = 1			//how many times can we spawn from it. set to -1 for infinite.
 	var/brute_damage = 0
@@ -25,16 +28,17 @@
 	var/mob_color //Change the mob's color
 	var/assignedrole
 	var/show_flavour = TRUE
-	var/banType = "lavaland"
+	var/banType = ROLE_LAVALAND
+	var/ghost_usable = TRUE
 
 //ATTACK GHOST IGNORING PARENT RETURN VALUE
 /obj/effect/mob_spawn/attack_ghost(mob/user)
-	if(!SSticker.HasRoundStarted() || !loc)
+	if(!SSticker.HasRoundStarted() || !loc || !ghost_usable)
 		return
 	if(!uses)
 		to_chat(user, "<span class='warning'>This spawner is out of charges!</span>")
 		return
-	if(jobban_isbanned(user, banType))
+	if(is_banned_from(user.key, banType))
 		to_chat(user, "<span class='warning'>You are jobanned!</span>")
 		return
 	if(QDELETED(src) || QDELETED(user))
@@ -49,7 +53,7 @@
 	. = ..()
 	if(instant || (roundstart && (mapload || (SSticker && SSticker.current_state > GAME_STATE_SETTING_UP))))
 		create()
-	else
+	else if(ghost_usable)
 		GLOB.poi_list |= src
 		LAZYADD(GLOB.mob_spawners[name], src)
 
@@ -67,10 +71,13 @@
 /obj/effect/mob_spawn/proc/equip(mob/M)
 	return
 
-/obj/effect/mob_spawn/proc/create(ckey, name)
+/obj/effect/mob_spawn/proc/create(ckey, newname)
 	var/mob/living/M = new mob_type(get_turf(src)) //living mobs only
-	if(!random)
-		M.real_name = mob_name ? mob_name : M.name
+	if(!random || newname)
+		if(newname)
+			M.real_name = newname
+		else
+			M.real_name = mob_name ? mob_name : M.name
 		if(!mob_gender)
 			mob_gender = pick(MALE, FEMALE)
 		M.gender = mob_gender
@@ -90,19 +97,32 @@
 	if(ckey)
 		M.ckey = ckey
 		if(show_flavour)
-			to_chat(M, "[flavour_text]")
+			var/output_message = "<span class='big bold'>[short_desc]</span>"
+			if(flavour_text != "")
+				output_message += "\n<span class='bold'>[flavour_text]</span>"
+			if(important_info != "")
+				output_message += "\n<span class='userdanger'>[important_info]</span>"
+			to_chat(M, output_message)
 		var/datum/mind/MM = M.mind
+		var/datum/antagonist/A
+		if(antagonist_type)
+			A = MM.add_antag_datum(antagonist_type)
 		if(objectives)
+			if(!A)
+				A = MM.add_antag_datum(/datum/antagonist/custom)
 			for(var/objective in objectives)
-				MM.objectives += new/datum/objective(objective)
+				var/datum/objective/O = new/datum/objective(objective)
+				O.owner = MM
+				A.objectives += O
 		if(assignedrole)
 			M.mind.assigned_role = assignedrole
-		special(M, name)
+		special(M)
 		MM.name = M.real_name
 	if(uses > 0)
 		uses--
 	if(!permanent && !uses)
 		qdel(src)
+	return M
 
 // Base version - place these on maps/templates.
 /obj/effect/mob_spawn/human
@@ -140,8 +160,8 @@
 	var/backpack_contents = -1
 	var/suit_store = -1
 
-	var/hair_style
-	var/facial_hair_style
+	var/hairstyle
+	var/facial_hairstyle
 	var/skin_tone
 
 /obj/effect/mob_spawn/human/Initialize()
@@ -161,14 +181,14 @@
 	H.underwear = "Nude"
 	H.undershirt = "Nude"
 	H.socks = "Nude"
-	if(hair_style)
-		H.hair_style = hair_style
+	if(hairstyle)
+		H.hairstyle = hairstyle
 	else
-		H.hair_style = random_hair_style(gender)
-	if(facial_hair_style)
-		H.facial_hair_style = facial_hair_style
+		H.hairstyle = random_hairstyle(H.gender)
+	if(facial_hairstyle)
+		H.facial_hairstyle = facial_hairstyle
 	else
-		H.facial_hair_style = random_facial_hair_style(gender)
+		H.facial_hairstyle = random_facial_hairstyle(H.gender)
 	if(skin_tone)
 		H.skin_tone = skin_tone
 	else
@@ -224,10 +244,13 @@
 	death = FALSE
 	roundstart = FALSE //you could use these for alive fake humans on roundstart but this is more common scenario
 
+/obj/effect/mob_spawn/human/corpse/delayed
+	ghost_usable = FALSE //These are just not-yet-set corpses.
+	instant = FALSE
 
 //Non-human spawners
 
-/obj/effect/mob_spawn/AICorpse/create() //Creates a corrupted AI
+/obj/effect/mob_spawn/AICorpse/create(ckey) //Creates a corrupted AI
 	var/A = locate(/mob/living/silicon/ai) in loc
 	if(A)
 		return
@@ -247,7 +270,7 @@
 /obj/effect/mob_spawn/slime/equip(mob/living/simple_animal/slime/S)
 	S.colour = mobcolour
 
-/obj/effect/mob_spawn/human/facehugger/create() //Creates a squashed facehugger
+/obj/effect/mob_spawn/facehugger/create(ckey) //Creates a squashed facehugger
 	var/obj/item/clothing/mask/facehugger/O = new(src.loc) //variable O is a new facehugger at the location of the landmark
 	O.name = src.name
 	O.Die() //call the facehugger's death proc
@@ -308,7 +331,7 @@
 	name = "sleeper"
 	icon = 'icons/obj/machines/sleeper.dmi'
 	icon_state = "sleeper"
-	flavour_text = "<span class='big bold'>You are a space doctor!</span>"
+	short_desc = "You are a space doctor!"
 	assignedrole = "Space Doctor"
 
 /obj/effect/mob_spawn/human/doctor/alive/equip(mob/living/carbon/human/H)
@@ -336,10 +359,10 @@
 
 /obj/effect/mob_spawn/human/miner
 	name = "Shaft Miner"
-	outfit = /datum/outfit/job/miner/asteroid
+	outfit = /datum/outfit/job/miner
 
 /obj/effect/mob_spawn/human/miner/rig
-	outfit = /datum/outfit/job/miner/equipped/asteroid
+	outfit = /datum/outfit/job/miner/equipped/hardsuit
 
 /obj/effect/mob_spawn/human/miner/explorer
 	outfit = /datum/outfit/job/miner/equipped
@@ -363,13 +386,14 @@
 	name = "bartender sleeper"
 	icon = 'icons/obj/machines/sleeper.dmi'
 	icon_state = "sleeper"
-	flavour_text = "<span class='big bold'>You are a space bartender!</span><b> Time to mix drinks and change lives. Smoking space drugs makes it easier to understand your patrons' odd dialect.</b>"
+	short_desc = "You are a space bartender!"
+	flavour_text = "Time to mix drinks and change lives. Smoking space drugs makes it easier to understand your patrons' odd dialect."
 	assignedrole = "Space Bartender"
 	id_job = "Bartender"
 
 /datum/outfit/spacebartender
 	name = "Space Bartender"
-	uniform = /obj/item/clothing/under/rank/bartender
+	uniform = /obj/item/clothing/under/rank/civilian/bartender
 	back = /obj/item/storage/backpack
 	shoes = /obj/item/clothing/shoes/sneakers/black
 	suit = /obj/item/clothing/suit/armor/vest
@@ -387,16 +411,18 @@
 	name = "beach bum sleeper"
 	icon = 'icons/obj/machines/sleeper.dmi'
 	icon_state = "sleeper"
-	flavour_text = "<span class='big bold'>You're, like, totally a dudebro, bruh.</span><b> Ch'yea. You came here, like, on spring break, hopin' to pick up some bangin' hot chicks, y'knaw?</b>"
+	short_desc = "You're, like, totally a dudebro, bruh."
+	flavour_text = "Ch'yea. You came here, like, on spring break, hopin' to pick up some bangin' hot chicks, y'knaw?"
 	assignedrole = "Beach Bum"
 
 /obj/effect/mob_spawn/human/beach/alive/lifeguard
-	flavour_text = "<span class='big bold'>You're a spunky lifeguard!</span><b> It's up to you to make sure nobody drowns or gets eaten by sharks and stuff.</b>"
+	short_desc = "You're a spunky lifeguard!"
+	flavour_text = "It's up to you to make sure nobody drowns or gets eaten by sharks and stuff."
 	mob_gender = "female"
 	name = "lifeguard sleeper"
 	id_job = "Lifeguard"
 	uniform = /obj/item/clothing/under/shorts/red
-	
+
 /datum/outfit/beachbum
 	name = "Beach Bum"
 	glasses = /obj/item/clothing/glasses/sunglasses
@@ -422,7 +448,7 @@
 /datum/outfit/nanotrasenbridgeofficercorpse
 	name = "Bridge Officer Corpse"
 	ears = /obj/item/radio/headset/heads/hop
-	uniform = /obj/item/clothing/under/rank/centcom_officer
+	uniform = /obj/item/clothing/under/rank/centcom/officer
 	suit = /obj/item/clothing/suit/armor/bulletproof
 	shoes = /obj/item/clothing/shoes/sneakers/black
 	glasses = /obj/item/clothing/glasses/sunglasses
@@ -437,7 +463,7 @@
 
 /datum/outfit/nanotrasencommandercorpse
 	name = "Nanotrasen Private Security Commander"
-	uniform = /obj/item/clothing/under/rank/centcom_commander
+	uniform = /obj/item/clothing/under/rank/centcom/commander
 	suit = /obj/item/clothing/suit/armor/bulletproof
 	ears = /obj/item/radio/headset/heads/captain
 	glasses = /obj/item/clothing/glasses/eyepatch
@@ -452,12 +478,12 @@
 /obj/effect/mob_spawn/human/nanotrasensoldier
 	name = "Nanotrasen Private Security Officer"
 	id_job = "Private Security Force"
-	id_access_list = list(ACCESS_CENT_CAPTAIN, ACCESS_CENT_GENERAL, ACCESS_CENT_SPECOPS, ACCESS_CENT_MEDICAL, ACCESS_CENT_STORAGE, ACCESS_SECURITY)
+	id_access_list = list(ACCESS_CENT_CAPTAIN, ACCESS_CENT_GENERAL, ACCESS_CENT_SPECOPS, ACCESS_CENT_MEDICAL, ACCESS_CENT_STORAGE, ACCESS_SECURITY, ACCESS_MECH_SECURITY)
 	outfit = /datum/outfit/nanotrasensoldiercorpse
 
 /datum/outfit/nanotrasensoldiercorpse
 	name = "NT Private Security Officer Corpse"
-	uniform = /obj/item/clothing/under/rank/security
+	uniform = /obj/item/clothing/under/rank/security/officer
 	suit = /obj/item/clothing/suit/armor/vest
 	shoes = /obj/item/clothing/shoes/combat
 	gloves = /obj/item/clothing/gloves/combat
@@ -474,7 +500,7 @@
 	name = "sleeper"
 	icon = 'icons/obj/machines/sleeper.dmi'
 	icon_state = "sleeper"
-	flavour_text = "<span class='big bold'>You are a Nanotrasen Commander!</span>"
+	short_desc = "You are a Nanotrasen Commander!"
 
 /obj/effect/mob_spawn/human/nanotrasensoldier/alive
 	death = FALSE
@@ -484,7 +510,7 @@
 	icon = 'icons/obj/machines/sleeper.dmi'
 	icon_state = "sleeper"
 	faction = "nanotrasenprivate"
-	flavour_text = "<span class='big bold'>You are a Nanotrasen Private Security Officer!</span>"
+	short_desc = "You are a Nanotrasen Private Security Officer!"
 
 
 /////////////////Spooky Undead//////////////////////
@@ -500,7 +526,8 @@
 	roundstart = FALSE
 	icon = 'icons/effects/blood.dmi'
 	icon_state = "remains"
-	flavour_text = "<span class='big bold'>By unknown powers, your skeletal remains have been reanimated!</span><b> Walk this mortal plain and terrorize all living adventurers who dare cross your path.</b>"
+	short_desc = "By unknown powers, your skeletal remains have been reanimated!"
+	flavour_text = "Walk this mortal plain and terrorize all living adventurers who dare cross your path."
 	assignedrole = "Skeleton"
 
 /obj/effect/mob_spawn/human/zombie
@@ -514,7 +541,8 @@
 	roundstart = FALSE
 	icon = 'icons/effects/blood.dmi'
 	icon_state = "remains"
-	flavour_text = "<span class='big bold'>By unknown powers, your rotting remains have been resurrected!</span><b> Walk this mortal plain and terrorize all living adventurers who dare cross your path.</b>"
+	short_desc = "By unknown powers, your rotting remains have been resurrected!"
+	flavour_text = "Walk this mortal plain and terrorize all living adventurers who dare cross your path."
 
 
 /obj/effect/mob_spawn/human/abductor
@@ -549,7 +577,7 @@
 
 /datum/outfit/cryobartender
 	name = "Cryogenic Bartender"
-	uniform = /obj/item/clothing/under/rank/bartender
+	uniform = /obj/item/clothing/under/rank/civilian/bartender
 	back = /obj/item/storage/backpack
 	shoes = /obj/item/clothing/shoes/sneakers/black
 	suit = /obj/item/clothing/suit/armor/vest

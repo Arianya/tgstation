@@ -7,7 +7,7 @@
 		return
 
 	if (!istype(borgo, /mob/living/silicon/robot))
-		borgo = input("Select a borg", "Select a borg", null, null) as null|anything in GLOB.silicon_mobs
+		borgo = input("Select a borg", "Select a borg", null, null) as null|anything in sortNames(GLOB.silicon_mobs)
 	if (!istype(borgo, /mob/living/silicon/robot))
 		to_chat(usr, "<span class='warning'>Borg is required for borgpanel</span>")
 
@@ -21,18 +21,17 @@
 	var/mob/living/silicon/robot/borg
 	var/user
 
-/datum/borgpanel/New(user, mob/living/silicon/robot/borg)
-	if(!istype(borg))
-		CRASH("Borg panel is only available for borgs")
+/datum/borgpanel/New(to_user, mob/living/silicon/robot/to_borg)
+	if(!istype(to_borg))
 		qdel(src)
-	if (istype(user, /mob))
-		var/mob/M = user
-		if (!M.client)
-			CRASH("Borg panel attempted to open to a mob without a client")
-		src.user = M.client
-	else
-		src.user = user
-	src.borg = borg
+		CRASH("Borg panel is only available for borgs")
+
+	user = CLIENT_FROM_VAR(to_user)
+
+	if (!user)
+		CRASH("Borg panel attempted to open to a mob without a client")
+
+	borg = to_borg
 
 /datum/borgpanel/ui_interact(mob/user, ui_key = "main", datum/tgui/ui = null, force_open = FALSE, datum/tgui/master_ui = null, datum/ui_state/state = GLOB.admin_state)
 	ui = SStgui.try_update_ui(user, src, ui_key, ui, force_open)
@@ -54,7 +53,7 @@
 	.["upgrades"] = list()
 	for (var/upgradetype in subtypesof(/obj/item/borg/upgrade)-/obj/item/borg/upgrade/hypospray) //hypospray is a dummy parent for hypospray upgrades
 		var/obj/item/borg/upgrade/upgrade = upgradetype
-		if (initial(upgrade.module_type) && !istype(borg.module, initial(upgrade.module_type))) // Upgrade requires a different module
+		if (initial(upgrade.module_type) && !is_type_in_list(borg.module, initial(upgrade.module_type))) // Upgrade requires a different module
 			continue
 		var/installed = FALSE
 		if (locate(upgradetype) in borg)
@@ -63,7 +62,7 @@
 	.["laws"] = borg.laws ? borg.laws.get_law_list(include_zeroth = TRUE) : list()
 	.["channels"] = list()
 	for (var/k in GLOB.radiochannels)
-		if (k == "Common")
+		if (k == RADIO_CHANNEL_COMMON)
 			continue
 		.["channels"] += list(list("name" = k, "installed" = (k in borg.radio.channels)))
 	.["cell"] = borg.cell ? list("missing" = FALSE, "maxcharge" = borg.cell.maxcharge, "charge" = borg.cell.charge) : list("missing" = TRUE, "maxcharge" = 1, "charge" = 0)
@@ -165,13 +164,13 @@
 			if (channel in borg.radio.channels) // We're removing a channel
 				if (!borg.radio.keyslot) // There's no encryption key. This shouldn't happen but we can cope
 					borg.radio.channels -= channel
-					if (channel == "Syndicate")
+					if (channel == RADIO_CHANNEL_SYNDICATE)
 						borg.radio.syndie = FALSE
 					else if (channel == "CentCom")
 						borg.radio.independent = FALSE
 				else
 					borg.radio.keyslot.channels -= channel
-					if (channel == "Syndicate")
+					if (channel == RADIO_CHANNEL_SYNDICATE)
 						borg.radio.keyslot.syndie = FALSE
 					else if (channel == "CentCom")
 						borg.radio.keyslot.independent = FALSE
@@ -181,7 +180,7 @@
 				if (!borg.radio.keyslot) // Assert that an encryption key exists
 					borg.radio.keyslot = new (borg.radio)
 				borg.radio.keyslot.channels[channel] = 1
-				if (channel == "Syndicate")
+				if (channel == RADIO_CHANNEL_SYNDICATE)
 					borg.radio.keyslot.syndie = TRUE
 				else if (channel == "CentCom")
 					borg.radio.keyslot.independent = TRUE

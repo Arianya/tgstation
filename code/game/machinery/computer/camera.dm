@@ -4,17 +4,23 @@
 	icon_screen = "cameras"
 	icon_keyboard = "security_key"
 	circuit = /obj/item/circuitboard/computer/security
+	light_color = LIGHT_COLOR_RED
+
 	var/last_pic = 1
 	var/list/network = list("ss13")
 	var/list/watchers = list() //who's using the console, associated with the camera they're on.
-
-	light_color = LIGHT_COLOR_RED
+	var/long_ranged = FALSE
 
 /obj/machinery/computer/security/Initialize()
 	. = ..()
 	for(var/i in network)
 		network -= i
 		network += lowertext(i)
+
+/obj/machinery/computer/security/connect_to_shuttle(obj/docking_port/mobile/port, obj/docking_port/stationary/dock, idnum, override=FALSE)
+	for(var/i in network)
+		network -= i
+		network += "[idnum][i]"
 
 /obj/machinery/computer/security/check_eye(mob/user)
 	if( (stat & (NOPOWER|BROKEN)) || user.incapacitated() || user.eye_blind )
@@ -30,14 +36,14 @@
 	if(!C.can_use())
 		user.unset_machine()
 		return
-	if(!issilicon(user))
-		if(!Adjacent(user))
-			user.unset_machine()
-			return
-	else if(iscyborg(user))
+	if(iscyborg(user) || long_ranged)
 		var/list/viewing = viewers(src)
 		if(!viewing.Find(user))
 			user.unset_machine()
+		return
+	if(!issilicon(user) && !Adjacent(user))
+		user.unset_machine()
+		return
 
 /obj/machinery/computer/security/on_unset_machine(mob/user)
 	watchers.Remove(user)
@@ -49,20 +55,17 @@
 			M.unset_machine() //to properly reset the view of the users if the console is deleted.
 	return ..()
 
-/obj/machinery/computer/security/attack_hand(mob/user)
-	. = ..()
-	if(.)
+/obj/machinery/computer/security/interact(mob/user)
+	if (stat)
 		return
-	if(stat)
+	if (ismob(user) && !isliving(user)) // ghosts don't need cameras
 		return
 	if (!network)
-		throw EXCEPTION("No camera network")
 		user.unset_machine()
-		return
+		CRASH("No camera network")
 	if (!(islist(network)))
-		throw EXCEPTION("Camera network is not a list")
 		user.unset_machine()
-		return
+		CRASH("Camera network is not a list")
 	if(..())
 		user.unset_machine()
 		return
@@ -78,7 +81,7 @@
 		if(!(user in watchers))
 			user.unset_machine() // no usable camera on the network, we disconnect the user from the computer.
 			return
-	playsound(src, 'sound/machines/terminal_prompt.ogg', 25, 0)
+	playsound(src, 'sound/machines/terminal_prompt.ogg', 25, FALSE)
 	use_camera_console(user)
 
 /obj/machinery/computer/security/proc/use_camera_console(mob/user)
@@ -88,32 +91,31 @@
 		return
 	if(!t)
 		user.unset_machine()
-		playsound(src, 'sound/machines/terminal_off.ogg', 25, 0)
+		playsound(src, 'sound/machines/terminal_off.ogg', 25, FALSE)
 		return
 
 	var/obj/machinery/camera/C = camera_list[t]
 
 	if(t == "Cancel")
 		user.unset_machine()
-		playsound(src, 'sound/machines/terminal_off.ogg', 25, 0)
+		playsound(src, 'sound/machines/terminal_off.ogg', 25, FALSE)
 		return
 	if(C)
 		var/camera_fail = 0
 		if(!C.can_use() || user.machine != src || user.eye_blind || user.incapacitated())
 			camera_fail = 1
-		else if(iscyborg(user))
+		else if(iscyborg(user) || long_ranged)
 			var/list/viewing = viewers(src)
 			if(!viewing.Find(user))
 				camera_fail = 1
-		else if(!issilicon(user))
-			if(!Adjacent(user))
-				camera_fail = 1
+		else if(!issilicon(user) && !Adjacent(user))
+			camera_fail = 1
 
 		if(camera_fail)
 			user.unset_machine()
 			return 0
 
-		playsound(src, 'sound/machines/terminal_prompt_confirm.ogg', 25, 0)
+		playsound(src, 'sound/machines/terminal_prompt_confirm.ogg', 25, FALSE)
 		if(isAI(user))
 			var/mob/living/silicon/ai/A = user
 			A.eyeobj.setLoc(get_turf(C))
@@ -160,7 +162,7 @@
 	icon_state = "television"
 	icon_keyboard = null
 	icon_screen = "detective_tv"
-	clockwork = TRUE //it'd look weird
+	pass_flags = PASSTABLE
 
 /obj/machinery/computer/security/mining
 	name = "outpost camera console"
@@ -177,7 +179,7 @@
 	circuit = /obj/item/circuitboard/computer/research
 
 /obj/machinery/computer/security/hos
-	name = "Head of Security's camera console"
+	name = "\improper Head of Security's camera console"
 	desc = "A custom security console with added access to the labor camp network."
 	network = list("ss13", "labor")
 	circuit = null
@@ -189,7 +191,7 @@
 	circuit = null
 
 /obj/machinery/computer/security/qm
-	name = "Quartermaster's camera console"
+	name = "\improper Quartermaster's camera console"
 	desc = "A console with access to the mining, auxillary base and vault camera networks."
 	network = list("mine", "auxbase", "vault")
 	circuit = null
@@ -201,54 +203,78 @@
 	desc = "Used for watching an empty arena."
 	icon = 'icons/obj/stationobjs.dmi'
 	icon_state = "telescreen"
+	layer = SIGN_LAYER
 	network = list("thunder")
 	density = FALSE
 	circuit = null
-	clockwork = TRUE //it'd look very weird
 	light_power = 0
 
-/obj/machinery/computer/security/telescreen/update_icon()
+/obj/machinery/computer/security/telescreen/update_icon_state()
 	icon_state = initial(icon_state)
 	if(stat & BROKEN)
 		icon_state += "b"
-	return
 
 /obj/machinery/computer/security/telescreen/entertainment
 	name = "entertainment monitor"
 	desc = "Damn, they better have the /tg/ channel on these things."
 	icon = 'icons/obj/status_display.dmi'
-	icon_state = "entertainment"
+	icon_state = "entertainment_blank"
 	network = list("thunder")
+	density = FALSE
+	circuit = null
+	long_ranged = TRUE
+	interaction_flags_atom = NONE  // interact() is called by BigClick()
+	var/icon_state_off = "entertainment_blank"
+	var/icon_state_on = "entertainment"
+
+/obj/machinery/computer/security/telescreen/entertainment/Initialize()
+	. = ..()
+	RegisterSignal(src, COMSIG_CLICK, .proc/BigClick)
+
+// Bypass clickchain to allow humans to use the telescreen from a distance
+/obj/machinery/computer/security/telescreen/entertainment/proc/BigClick()
+	interact(usr)
+
+/obj/machinery/computer/security/telescreen/entertainment/proc/notify(on)
+	if(on && icon_state == icon_state_off)
+		say(pick(
+			"Feats of bravery live now at the thunderdome!",
+			"Two enter, one leaves! Tune in now!",
+			"Violence like you've never seen it before!",
+			"Spears! Camera! Action! LIVE NOW!"))
+		icon_state = icon_state_on
+	else
+		icon_state = icon_state_off
 
 /obj/machinery/computer/security/telescreen/rd
-	name = "Research Director's telescreen"
+	name = "\improper Research Director's telescreen"
 	desc = "Used for watching the AI and the RD's goons from the safety of his office."
 	network = list("rd", "aicore", "aiupload", "minisat", "xeno", "test")
 
-/obj/machinery/computer/security/telescreen/circuitry
-	name = "circuitry telescreen"
-	desc = "Used for watching the other eggheads from the safety of the circuitry lab."
+/obj/machinery/computer/security/telescreen/research
+	name = "research telescreen"
+	desc = "A telescreen with access to the research division's camera network."
 	network = list("rd")
 
 /obj/machinery/computer/security/telescreen/ce
-	name = "Chief Engineer's telescreen"
+	name = "\improper Chief Engineer's telescreen"
 	desc = "Used for watching the engine, telecommunications and the minisat."
 	network = list("engine", "singularity", "tcomms", "minisat")
 
 /obj/machinery/computer/security/telescreen/cmo
-	name = "Chief Medical Officer's telescreen"
+	name = "\improper Chief Medical Officer's telescreen"
 	desc = "A telescreen with access to the medbay's camera network."
 	network = list("medbay")
 
 /obj/machinery/computer/security/telescreen/vault
-	name = "Vault monitor"
+	name = "vault monitor"
 	desc = "A telescreen that connects to the vault's camera network."
 	network = list("vault")
 
 /obj/machinery/computer/security/telescreen/toxins
-	name = "Bomb test site monitor"
+	name = "bomb test site monitor"
 	desc = "A telescreen that connects to the bomb test site's camera."
-	network = list("toxin")
+	network = list("toxins")
 
 /obj/machinery/computer/security/telescreen/engine
 	name = "engine monitor"
@@ -281,6 +307,6 @@
 	network = list("minisat")
 
 /obj/machinery/computer/security/telescreen/aiupload
-	name = "AI upload monitor"
+	name = "\improper AI upload monitor"
 	desc = "A telescreen that connects to the AI upload's camera network."
 	network = list("aiupload")

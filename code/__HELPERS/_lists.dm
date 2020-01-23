@@ -20,27 +20,68 @@
 #define LAZYLEN(L) length(L)
 #define LAZYCLEARLIST(L) if(L) L.Cut()
 #define SANITIZE_LIST(L) ( islist(L) ? L : list() )
+#define reverseList(L) reverseRange(L.Copy())
+
+/// Passed into BINARY_INSERT to compare keys
+#define COMPARE_KEY __BIN_LIST[__BIN_MID]
+/// Passed into BINARY_INSERT to compare values
+#define COMPARE_VALUE __BIN_LIST[__BIN_LIST[__BIN_MID]]
+
+/****
+	* Binary search sorted insert
+	* INPUT: Object to be inserted
+	* LIST: List to insert object into
+	* TYPECONT: The typepath of the contents of the list
+	* COMPARE: The object to compare against, usualy the same as INPUT
+	* COMPARISON: The variable on the objects to compare
+	*/
+#define BINARY_INSERT(INPUT, LIST, TYPECONT, COMPARE, COMPARISON, COMPTYPE) \
+	do {\
+		var/list/__BIN_LIST = LIST;\
+		var/__BIN_CTTL = length(__BIN_LIST);\
+		if(!__BIN_CTTL) {\
+			__BIN_LIST += INPUT;\
+		} else {\
+			var/__BIN_LEFT = 1;\
+			var/__BIN_RIGHT = __BIN_CTTL;\
+			var/__BIN_MID = (__BIN_LEFT + __BIN_RIGHT) >> 1;\
+			var/##TYPECONT/__BIN_ITEM;\
+			while(__BIN_LEFT < __BIN_RIGHT) {\
+				__BIN_ITEM = COMPTYPE;\
+				if(__BIN_ITEM.##COMPARISON <= COMPARE.##COMPARISON) {\
+					__BIN_LEFT = __BIN_MID + 1;\
+				} else {\
+					__BIN_RIGHT = __BIN_MID;\
+				};\
+				__BIN_MID = (__BIN_LEFT + __BIN_RIGHT) >> 1;\
+			};\
+			__BIN_ITEM = COMPTYPE;\
+			__BIN_MID = __BIN_ITEM.##COMPARISON > COMPARE.##COMPARISON ? __BIN_MID : __BIN_MID + 1;\
+			__BIN_LIST.Insert(__BIN_MID, INPUT);\
+		};\
+	} while(FALSE)
 
 //Returns a list in plain english as a string
 /proc/english_list(list/input, nothing_text = "nothing", and_text = " and ", comma_text = ", ", final_comma_text = "" )
-	var/total = input.len
-	if (!total)
-		return "[nothing_text]"
-	else if (total == 1)
-		return "[input[1]]"
-	else if (total == 2)
-		return "[input[1]][and_text][input[2]]"
-	else
-		var/output = ""
-		var/index = 1
-		while (index < total)
-			if (index == total - 1)
-				comma_text = final_comma_text
+	var/total = length(input)
+	switch(total)
+		if (0)
+			return "[nothing_text]"
+		if (1)
+			return "[input[1]]"
+		if (2)
+			return "[input[1]][and_text][input[2]]"
+		else
+			var/output = ""
+			var/index = 1
+			while (index < total)
+				if (index == total - 1)
+					comma_text = final_comma_text
 
-			output += "[input[index]][comma_text]"
-			index++
+				output += "[input[index]][comma_text]"
+				index++
 
-		return "[output][and_text][input[index]]"
+			return "[output][and_text][input[index]]"
 
 //Returns list element or null. Should prevent "index out of bounds" error.
 /proc/listgetindex(list/L, index)
@@ -95,6 +136,7 @@
 
 //returns a new list with only atoms that are in typecache L
 /proc/typecache_filter_list(list/atoms, list/typecache)
+	RETURN_TYPE(/list)
 	. = list()
 	for(var/thing in atoms)
 		var/atom/A = thing
@@ -102,6 +144,7 @@
 			. += A
 
 /proc/typecache_filter_list_reverse(list/atoms, list/typecache)
+	RETURN_TYPE(/list)
 	. = list()
 	for(var/thing in atoms)
 		var/atom/A = thing
@@ -228,6 +271,7 @@
 
 //Pick a random element from the list and remove it from the list.
 /proc/pick_n_take(list/L)
+	RETURN_TYPE(L[_].type)
 	if(L.len)
 		var/picked = rand(1,L.len)
 		. = L[picked]
@@ -320,7 +364,7 @@
 
 //uses sortList() but uses the var's name specifically. This should probably be using mergeAtom() instead
 /proc/sortNames(list/L, order=1)
-	return sortTim(L, order >= 0 ? /proc/cmp_name_asc : /proc/cmp_name_dsc)
+	return sortTim(L.Copy(), order >= 0 ? /proc/cmp_name_asc : /proc/cmp_name_dsc)
 
 
 //Converts a bitfield to a list of numbers (or words if a wordlist is provided)
@@ -350,10 +394,12 @@
 			i++
 	return i
 
+/// Returns datum/data/record
 /proc/find_record(field, value, list/L)
 	for(var/datum/data/record/R in L)
 		if(R.fields[field] == value)
 			return R
+	return FALSE
 
 
 //Move a single element from position fromIndex within a list, to position toIndex
@@ -460,8 +506,18 @@
 		return l
 	. = l.Copy()
 	for(var/i = 1 to l.len)
-		if(islist(.[i]))
-			.[i] = .(.[i])
+		var/key = .[i]
+		if(isnum(key))
+			// numbers cannot ever be associative keys
+			continue
+		var/value = .[key]
+		if(islist(value))
+			value = deepCopyList(value)
+			.[key] = value
+		if(islist(key))
+			key = deepCopyList(key)
+			.[i] = key
+			.[key] = value
 
 //takes an input_key, as text, and the list of keys already used, outputting a replacement key in the format of "[input_key] ([number_of_duplicates])" if it finds a duplicate
 //use this for lists of things that might have the same name, like mobs or objects, that you plan on giving to a player as input
@@ -475,7 +531,7 @@
 		used_key_list[input_key] = 1
 	return input_key
 
-#if DM_VERSION > 512
+#if DM_VERSION > 513
 #error Remie said that lummox was adding a way to get a lists
 #error contents via list.values, if that is true remove this
 #error otherwise, update the version and bug lummox
@@ -526,3 +582,22 @@
 			L1[key] += other_value
 		else
 			L1[key] = other_value
+
+/proc/assoc_list_strip_value(list/input)
+	var/list/ret = list()
+	for(var/key in input)
+		ret += key
+	return ret
+
+/proc/compare_list(list/l,list/d)
+	if(!islist(l) || !islist(d))
+		return FALSE
+
+	if(l.len != d.len)
+		return FALSE
+
+	for(var/i in 1 to l.len)
+		if(l[i] != d[i])
+			return FALSE
+
+	return TRUE

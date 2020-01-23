@@ -33,7 +33,9 @@ All ShuttleMove procs go here
 				M.stop_pulling()
 				M.visible_message("<span class='warning'>[shuttle] slams into [M]!</span>")
 				SSblackbox.record_feedback("tally", "shuttle_gib", 1, M.type)
+				log_attack("[key_name(M)] was shuttle gibbed by [shuttle].")
 				M.gib()
+
 
 		else //non-living mobs shouldn't be affected by shuttles, which is why this is an else
 			if(istype(thing, /obj/singularity) && !istype(thing, /obj/singularity/narsie)) //it's a singularity but not a god, ignore it.
@@ -53,7 +55,7 @@ All ShuttleMove procs go here
 	if(!shuttle_boundary)
 		CRASH("A turf queued to move via shuttle somehow had no skipover in baseturfs. [src]([type]):[loc]")
 	var/depth = baseturfs.len - shuttle_boundary + 1
-	newT.CopyOnTop(src, 1, depth)
+	newT.CopyOnTop(src, 1, depth, TRUE)
 	//Air stuff
 	newT.blocks_air = TRUE
 	newT.air_update_turf(TRUE)
@@ -131,7 +133,7 @@ All ShuttleMove procs go here
 	var/range = throw_force * 10
 	range = CEILING(rand(range-(range*0.1), range+(range*0.1)), 10)/10
 	var/speed = range/5
-	throw_at(target, range, speed)
+	safe_throw_at(target, range, speed, force = MOVE_FORCE_EXTREMELY_STRONG)
 
 /////////////////////////////////////////////////////////////////////////////////////
 
@@ -183,10 +185,12 @@ All ShuttleMove procs go here
 
 /obj/machinery/door/airlock/afterShuttleMove(turf/oldT, list/movement_force, shuttle_dir, shuttle_preferred_direction, move_dir, rotation)
 	. = ..()
+	var/current_area = get_area(src)
 	for(var/obj/machinery/door/airlock/A in orange(1, src))  // does not include src
-		// Cycle linking is only disabled if we are actually adjacent to another airlock
-		shuttledocked = TRUE
-		A.shuttledocked = TRUE
+		if(get_area(A) != current_area)  // does not include double-wide airlocks unless actually docked
+			// Cycle linking is only disabled if we are actually adjacent to another airlock
+			shuttledocked = TRUE
+			A.shuttledocked = TRUE
 
 /obj/machinery/camera/beforeShuttleMove(turf/newT, rotation, move_mode, obj/docking_port/mobile/moving_dock)
 	. = ..()
@@ -284,10 +288,10 @@ All ShuttleMove procs go here
 
 /obj/item/storage/pod/afterShuttleMove(turf/oldT, list/movement_force, shuttle_dir, shuttle_preferred_direction, move_dir, rotation)
 	. = ..()
-	// If the pod was launched, the storage will always open. The CentCom check
-	// ignores the movement of the shuttle from the staging area on CentCom to
+	// If the pod was launched, the storage will always open. The reserved_level check
+	// ignores the movement of the shuttle from the transit level to
 	// the station as it is loaded in.
-	if (oldT && !is_centcom_level(oldT.z))
+	if (oldT && !is_reserved_level(oldT.z))
 		unlocked = TRUE
 
 /************************************Mob move procs************************************/
@@ -310,12 +314,12 @@ All ShuttleMove procs go here
 /mob/living/lateShuttleMove(turf/oldT, list/movement_force, move_dir)
 	if(buckled)
 		return
-	
+
 	. = ..()
 
 	var/knockdown = movement_force["KNOCKDOWN"]
 	if(knockdown)
-		Knockdown(knockdown)
+		Paralyze(knockdown)
 
 
 /mob/living/simple_animal/hostile/megafauna/onShuttleMove(turf/newT, turf/oldT, list/movement_force, move_dir, obj/docking_port/stationary/old_dock, obj/docking_port/mobile/moving_dock)
@@ -338,11 +342,17 @@ All ShuttleMove procs go here
 	. = ..()
 	update()
 
+/obj/structure/cable/beforeShuttleMove(turf/newT, rotation, move_mode, obj/docking_port/mobile/moving_dock)
+	. = ..()
+	cut_cable_from_powernet(FALSE)
+
 /obj/structure/cable/afterShuttleMove(turf/oldT, list/movement_force, shuttle_dir, shuttle_preferred_direction, move_dir, rotation)
 	. = ..()
 	var/turf/T = loc
 	if(level==1)
 		hide(T.intact)
+	connect_wire(TRUE)
+	propogate_if_no_network()
 
 /obj/structure/shuttle/beforeShuttleMove(turf/newT, rotation, move_mode, obj/docking_port/mobile/moving_dock)
 	. = ..()

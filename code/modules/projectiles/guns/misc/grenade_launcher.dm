@@ -10,11 +10,11 @@
 	force = 5
 	var/list/grenades = new/list()
 	var/max_grenades = 3
-	materials = list(MAT_METAL=2000)
+	custom_materials = list(/datum/material/iron=2000)
 
 /obj/item/gun/grenadelauncher/examine(mob/user)
-	..()
-	to_chat(user, "[grenades.len] / [max_grenades] grenades loaded.")
+	. = ..()
+	. += "[grenades.len] / [max_grenades] grenades loaded."
 
 /obj/item/gun/grenadelauncher/attackby(obj/item/I, mob/user, params)
 
@@ -26,18 +26,12 @@
 			to_chat(user, "<span class='notice'>You put the grenade in the grenade launcher.</span>")
 			to_chat(user, "<span class='notice'>[grenades.len] / [max_grenades] Grenades.</span>")
 		else
-			to_chat(usr, "<span class='danger'>The grenade launcher cannot hold more grenades.</span>")
+			to_chat(usr, "<span class='warning'>The grenade launcher cannot hold more grenades!</span>")
 
-/obj/item/gun/grenadelauncher/afterattack(obj/target, mob/user , flag)
-	if(target == user)
-		return
+/obj/item/gun/grenadelauncher/can_shoot()
+	return grenades.len
 
-	if(grenades.len)
-		fire_grenade(target,user)
-	else
-		to_chat(user, "<span class='danger'>The grenade launcher is empty.</span>")
-
-/obj/item/gun/grenadelauncher/proc/fire_grenade(atom/target, mob/user)
+/obj/item/gun/grenadelauncher/process_fire(atom/target, mob/living/user, message = TRUE, params = null, zone_override = "", bonus_spread = 0)
 	user.visible_message("<span class='danger'>[user] fired a grenade!</span>", \
 						"<span class='danger'>You fire the grenade launcher!</span>")
 	var/obj/item/grenade/F = grenades[1] //Now with less copypasta!
@@ -48,5 +42,5 @@
 	log_game("[key_name(user)] fired a grenade ([F.name]) with a grenade launcher ([src]) from [AREACOORD(user)] at [target] [AREACOORD(target)].")
 	F.active = 1
 	F.icon_state = initial(F.icon_state) + "_active"
-	playsound(user.loc, 'sound/weapons/armbomb.ogg', 75, 1, -3)
+	playsound(user.loc, 'sound/weapons/armbomb.ogg', 75, TRUE, -3)
 	addtimer(CALLBACK(F, /obj/item/grenade.proc/prime), 15)
